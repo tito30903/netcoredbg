@@ -55,7 +55,7 @@ std::string Threads::GetThreadName(ICorDebugProcess *pProcess, const ThreadId &u
             HRESULT Status;
             m_sharedEvaluator->WalkMembers(iCorThreadObject, nullptr, FrameLevel{0}, false, [&](
                 ICorDebugType *,
-                bool,
+                const Evaluator::MemberTraits&,
                 const std::string &memberName,
                 Evaluator::GetValueCallback getValue,
                 Evaluator::SetterData*)

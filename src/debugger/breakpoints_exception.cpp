@@ -214,7 +214,7 @@ HRESULT ExceptionBreakpoints::GetExceptionDetails(ICorDebugThread *pThread, ICor
     const bool escape = false;
     m_sharedEvaluator->WalkMembers(pExceptionValue, pThread, FrameLevel{0}, false, [&](
         ICorDebugType*,
-        bool,
+        const Evaluator::MemberTraits&,
         const std::string &memberName,
         Evaluator::GetValueCallback getValue,
         Evaluator::SetterData*)
@@ -491,7 +491,7 @@ HRESULT ExceptionBreakpoints::ManagedCallbackException(ICorDebugThread *pThread,
     const bool escape = false;
     m_sharedEvaluator->WalkMembers(iCorExceptionValue, pThread, FrameLevel{0}, false, [&](
         ICorDebugType*,
-        bool,
+        const Evaluator::MemberTraits&,
         const std::string &memberName,
         Evaluator::GetValueCallback getValue,
         Evaluator::SetterData*)

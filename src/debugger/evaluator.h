@@ -81,8 +81,16 @@ public:
         }
     };
 
+    struct MemberTraits
+    {
+        bool isStatic = false;
+        bool isLiteral = false;
+        bool isInitOnly = false;
+        bool hasNoSetter = false;
+    };
+
     typedef std::function<HRESULT(ICorDebugValue**,int)> GetValueCallback;
-    typedef std::function<HRESULT(ICorDebugType*,bool,const std::string&,GetValueCallback,SetterData*)> WalkMembersCallback;
+    typedef std::function<HRESULT(ICorDebugType*,const MemberTraits&,const std::string&,GetValueCallback,SetterData*)> WalkMembersCallback;
     typedef std::function<HRESULT(const std::string&,GetValueCallback)> WalkStackVarsCallback;
     typedef std::function<HRESULT(ICorDebugFunction**)> GetFunctionCallback;
     typedef std::function<HRESULT(bool,const std::string&,ReturnElementType&,std::vector<ArgElementType>&,GetFunctionCallback)> WalkMethodsCallback;

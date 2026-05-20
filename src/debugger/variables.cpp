@@ -24,6 +24,43 @@
 namespace netcoredbg
 {
 
+static bool IsStringValue(ICorDebugValue *pValue)
+{
+    if (!pValue)
+        return false;
+
+    ToRelease<ICorDebugValue> pDerefValue;
+    BOOL isNull = FALSE;
+    if (FAILED(DereferenceAndUnboxValue(pValue, &pDerefValue, &isNull)) || isNull)
+        return false;
+
+    ToRelease<ICorDebugStringValue> pStringValue;
+    return SUCCEEDED(pDerefValue->QueryInterface(IID_ICorDebugStringValue, (LPVOID*)&pStringValue));
+}
+
+using MemberTraits = Evaluator::MemberTraits;
+
+static VariablePresentationHint ExtractPresentationHints(
+    const MemberTraits &traits,
+    ICorDebugValue *pValue)
+{
+    VariablePresentationHint hint;
+
+    if (traits.isStatic)
+        hint.attributes.push_back("static");
+
+    if (traits.isLiteral)
+        hint.attributes.push_back("constant");
+
+    if (traits.isInitOnly || traits.hasNoSetter)
+        hint.attributes.push_back("readOnly");
+
+    if (IsStringValue(pValue))
+        hint.attributes.push_back("rawString");
+
+    return hint;
+}
+
 static void GetNumChild(Evaluator *pEvaluator, ICorDebugValue *pValue, int &numChild, bool static_members)
 {
     numChild = 0;
@@ -36,12 +73,12 @@ static void GetNumChild(Evaluator *pEvaluator, ICorDebugValue *pValue, int &numC
     // No thread and FrameLevel{0} here, since we need only count children.
     if (FAILED(pEvaluator->WalkMembers(pValue, nullptr, FrameLevel{0}, false, [&numStatic, &numInstance](
         ICorDebugType *,
-        bool is_static,
+        const Evaluator::MemberTraits &traits,
         const std::string &,
         Evaluator::GetValueCallback,
         Evaluator::SetterData*)
     {
-        if (is_static)
+        if (traits.isStatic)
             numStatic++;
         else
             numInstance++;
@@ -67,10 +104,12 @@ struct VariableMember
     std::string name;
     std::string ownerType;
     ToRelease<ICorDebugValue> value;
-    VariableMember(const std::string &name, const std::string& ownerType, ICorDebugValue *pValue) :
+    MemberTraits traits;
+    VariableMember(const std::string &name, const std::string& ownerType, ICorDebugValue *pValue, const MemberTraits &traits = MemberTraits{}) :
         name(name),
         ownerType(ownerType),
-        value(pValue)
+        value(pValue),
+        traits(traits)
     {}
     VariableMember(VariableMember &&that) = default;
     VariableMember(const VariableMember &that) = delete;
@@ -104,15 +143,15 @@ static HRESULT FetchFieldsAndProperties(Evaluator *pEvaluator, ICorDebugValue *p
 
     IfFailRet(pEvaluator->WalkMembers(pInputValue, pThread, frameLevel, false, [&](
         ICorDebugType *pType,
-        bool is_static,
+        const Evaluator::MemberTraits &traits,
         const std::string &name,
         Evaluator::GetValueCallback getValue,
         Evaluator::SetterData*)
     {
-        if (is_static)
+        if (traits.isStatic)
             hasStaticMembers = true;
 
-        bool addMember = fetchOnlyStatic ? is_static : !is_static;
+        bool addMember = fetchOnlyStatic ? traits.isStatic : !traits.isStatic;
         if (!addMember)
             return S_OK;
 
@@ -131,7 +170,7 @@ static HRESULT FetchFieldsAndProperties(Evaluator *pEvaluator, ICorDebugValue *p
         if (pType)
             IfFailRet(TypePrinter::GetTypeOfValue(pType, className));
 
-        members.emplace_back(name, className, iCorResultValue.Detach());
+        members.emplace_back(name, className, iCorResultValue.Detach(), traits);
         return S_OK;
     }));
 
@@ -260,6 +299,8 @@ HRESULT Variables::GetStackVariables(
         IfFailRet(TypePrinter::GetTypeOfValue(iCorValue, var.type));
         IfFailRet(PrintValue(iCorValue, var.value));
 
+        var.presentationHint = ExtractPresentationHints(MemberTraits{}, iCorValue);
+
         IfFailRet(AddVariableReference(var, frameId, iCorValue, ValueIsVariable));
         variables.push_back(var);
         return S_OK;
@@ -356,6 +397,7 @@ HRESULT Variables::GetChildren(
             var.evaluateName = ref.evaluateName + (isIndex ? "" : ".") + var.name;
         IfFailRet(FillValueAndType(it, var));
         IfFailRet(AddVariableReference(var, ref.frameId, it.value, ValueIsVariable));
+        var.presentationHint = ExtractPresentationHints(it.traits, it.value);
         variables.push_back(var);
     }
 
@@ -493,7 +535,7 @@ HRESULT Variables::SetChild(
 
     if (FAILED(Status = m_sharedEvaluator->WalkMembers(ref.iCorValue, pThread, ref.frameId.getLevel(), true, [&](
         ICorDebugType*,
-        bool is_static,
+        const Evaluator::MemberTraits &traits,
         const std::string &varName,
         Evaluator::GetValueCallback getValue,
         Evaluator::SetterData *setterData) -> HRESULT

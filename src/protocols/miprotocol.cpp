@@ -242,6 +242,12 @@ static void PrintVar(const std::string &varobjName, Variable &v, ThreadId thread
     else
         attributes = "noneditable";
 
+    for (const auto &attr : v.presentationHint.attributes)
+    {
+        attributes += ",";
+        attributes += attr;
+    }
+
     ss << "name=\"" << varobjName << "\",";
     if (print_values)
     {

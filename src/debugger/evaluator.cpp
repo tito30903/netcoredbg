@@ -722,7 +722,7 @@ static HRESULT InternalWalkMembers(EvalHelpers *pEvalHelpers, ICorDebugValue *pI
             return S_OK;
         };
 
-        return cb(nullptr, false, "", getValue, nullptr);
+        return cb(nullptr, Evaluator::MemberTraits{}, "", getValue, nullptr);
     }
 
     ToRelease<ICorDebugArrayValue> pArrayValue;
@@ -752,7 +752,7 @@ static HRESULT InternalWalkMembers(EvalHelpers *pEvalHelpers, ICorDebugValue *pI
                 return S_OK;
             };
 
-            IfFailRet(cb(nullptr, false, "[" + IndiciesToStr(ind, base) + "]", getValue, nullptr));
+            IfFailRet(cb(nullptr, Evaluator::MemberTraits{}, "[" + IndiciesToStr(ind, base) + "]", getValue, nullptr));
             IncIndicies(ind, dims);
         }
 
@@ -854,7 +854,12 @@ static HRESULT InternalWalkMembers(EvalHelpers *pEvalHelpers, ICorDebugValue *pI
                 return S_OK;
             };
 
-            IfFailRet(cb(pType, is_static, name, getValue, nullptr));
+            Evaluator::MemberTraits traits{};
+            traits.isStatic = is_static;
+            traits.isLiteral = (fieldAttr & fdLiteral) != 0;
+            traits.isInitOnly = (fieldAttr & fdInitOnly) != 0;
+
+            IfFailRet(cb(pType, traits, name, getValue, nullptr));
         }
         return S_OK;
     }));
@@ -948,11 +953,17 @@ static HRESULT InternalWalkMembers(EvalHelpers *pEvalHelpers, ICorDebugValue *pI
                     iCorFuncSetter.Free();
                 }
                 Evaluator::SetterData setterData(is_static ? nullptr : pInputValue, pType, iCorFuncSetter);
-                IfFailRet(cb(pType, is_static, name, getValue, &setterData));
+                Evaluator::MemberTraits traits{};
+                traits.isStatic = is_static;
+                traits.hasNoSetter = (mdSetter == mdMethodDefNil);
+                IfFailRet(cb(pType, traits, name, getValue, &setterData));
             }
             else
             {
-                IfFailRet(cb(pType, is_static, name, getValue, nullptr));
+                Evaluator::MemberTraits traits{};
+                traits.isStatic = is_static;
+                traits.hasNoSetter = (mdSetter == mdMethodDefNil);
+                IfFailRet(cb(pType, traits, name, getValue, nullptr));
             }
         }
         return S_OK;
@@ -1559,14 +1570,14 @@ static HRESULT FollowFields(EvalHelpers *pEvalHelpers, ICorDebugThread *pThread,
 
         InternalWalkMembers(pEvalHelpers, pClassValue, pThread, frameLevel, nullptr, !!resultSetterData, [&](
             ICorDebugType *pType,
-            bool is_static,
+            const Evaluator::MemberTraits &traits,
             const std::string &memberName,
             Evaluator::GetValueCallback getValue,
             Evaluator::SetterData *setterData)
         {
-            if (is_static && valueKind == Evaluator::ValueIsVariable)
+            if (traits.isStatic && valueKind == Evaluator::ValueIsVariable)
                 return S_OK;
-            if (!is_static && valueKind == Evaluator::ValueIsClass)
+            if (!traits.isStatic && valueKind == Evaluator::ValueIsClass)
                 return S_OK;
 
             if (memberName != identifiers[i])

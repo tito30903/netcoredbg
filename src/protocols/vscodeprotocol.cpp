@@ -120,6 +120,16 @@ void to_json(json &j, const Variable &v) {
         j["namedVariables"] = v.namedVariables;
         // j["indexedVariables"] = v.indexedVariables;
     }
+
+    json hint;
+    if (!v.presentationHint.attributes.empty())
+        hint["attributes"] = v.presentationHint.attributes;
+    if (!v.presentationHint.kind.empty())
+        hint["kind"] = v.presentationHint.kind;
+    if (!v.presentationHint.visibility.empty())
+        hint["visibility"] = v.presentationHint.visibility;
+    if (!hint.empty())
+        j["presentationHint"] = hint;
 }
 
 static json FormJsonForExceptionDetails(const ExceptionDetails &details)
